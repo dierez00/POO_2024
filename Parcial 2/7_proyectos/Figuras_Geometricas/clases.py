@@ -44,11 +44,11 @@ class Rectangulos(Figuras):
         self.alto = alto
         self.ancho = ancho
         
-    def getLargo(self):
-        return self.largo
+    def getAlto(self):
+        return self.alto
     
-    def setLargo(self,largo):
-        self.largo=largo
+    def setAltp(self,alto):
+        self.alto=alto
         
     def getAncho(self):
         return self.ancho
