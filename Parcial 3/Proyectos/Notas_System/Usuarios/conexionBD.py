@@ -6,8 +6,9 @@ try:
         host='localhost',
         user='root',
         password='',
-        database='bd_python'
+        database='bd_notas'
     )
+    cursor=conexion.cursor(buffered=True)
 except Exception as e:
     print(type(e))
     print(type(e).__name__)
@@ -18,3 +19,5 @@ if conexion.is_connected():
     print(f"se creó la conexion con la base de datos exitosamente...")
 else:
     print(f"No fue posible conectar con la BD... Verifique...")
+    
+    
