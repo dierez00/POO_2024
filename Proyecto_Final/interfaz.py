@@ -32,7 +32,7 @@ def login():
 
 # Función que abre la ventana principal del punto de venta
 def abrir_punto_venta():
-    global tree_venta, total_value  # Hacer tree_venta y total_value accesibles globalmente
+    global tree_venta, total_value
 
     def agregar_producto_a_venta(producto):
         item_id = tree_venta.insert("", tk.END, values=producto)
@@ -47,12 +47,58 @@ def abrir_punto_venta():
         total_value.config(text=f"$ {total:.2f}")
 
     def completar_venta():
-        # Eliminar todos los elementos del Treeview
-        for item in tree_venta.get_children():
-            tree_venta.delete(item)
-        
-        # Restablecer el total a 0.00
-        total_value.config(text="$ 0.00")
+        try:
+
+            # Insertar un nuevo ticket en la tabla de tickets
+            insert_ticket_query = """
+            INSERT INTO tickets (fecha, total)
+            VALUES (NOW(), %s)
+            """
+            total = float(total_value.cget("text").replace("$", "").strip())
+            cursor.execute(insert_ticket_query, (total,))
+            id_detalle_ticket = cursor.lastrowid
+
+            # Insertar cada producto o servicio vendido en la tabla de detalles de tickets
+            insert_detalle_query = """
+            INSERT INTO detalles_ticket (id_ticket, codigo_producto, cantidad, precio_unitario, total)
+            VALUES (%s, %s, %s, %s, %s)
+            """
+            for item in tree_venta.get_children():
+                valores = tree_venta.item(item, 'values')
+                cursor.execute(insert_detalle_query, (id_detalle_ticket, valores[0], valores[1], valores[2], valores[3]))
+
+            # Confirmar la transacción
+            conexion.commit()
+
+            # Limpiar la tabla de venta y resetear el total
+            for item in tree_venta.get_children():
+                tree_venta.delete(item)
+            total_value.config(text="$ 0.00")
+
+            print("Venta completada y registrada en la base de datos.")
+
+        except mysql.connector.Error as err:
+            print(f"Error: {err}")
+            conexion.rollback()
+
+    def modificar_cantidad(item_id, incremento):
+        item = tree_venta.item(item_id)
+        cantidad = int(item['values'][2]) + incremento
+        if cantidad < 0:
+            cantidad = 0
+        precio = float(item['values'][3])
+        total = cantidad * precio
+        tree_venta.item(item_id, values=(item['values'][0], item['values'][1], cantidad, precio, total))
+        actualizar_total()
+
+    def on_key_press(event):
+        selected_item = tree_venta.selection()
+        if selected_item:
+            item_id = selected_item[0]
+            if event.keysym == 'plus':
+                modificar_cantidad(item_id, 1)
+            elif event.keysym == 'minus':
+                modificar_cantidad(item_id, -1)
 
     root = tk.Tk()
     root.title("Punto de Venta")
@@ -73,7 +119,7 @@ def abrir_punto_venta():
         "SERVICIOS": lambda: abrir_ventana_servicios(),
         "CLIENTES": lambda: abrir_ventana_clientes(),
         "EMPLEADOS": lambda: abrir_ventana_empleados(),
-        "TICKETS": lambda: print("Tickets"),
+        "TICKETS": lambda: abrir_ventana_tickets(),
     }
     for btn_text, btn_command in buttons.items():
         tk.Button(frame_nav, text=btn_text, font=("Arial", 12, "bold"), bg="lightgrey", command=btn_command).pack(side="left", padx=5, pady=5)
@@ -102,8 +148,7 @@ def abrir_punto_venta():
 
     root.bind("<F11>", lambda event: toggle_fullscreen(root, event))
     root.bind("<Escape>", lambda event: exit_fullscreen(root, event))
-
-    root.mainloop()
+    root.bind("<KeyPress>", on_key_press)  # Bind the key press event to the on_key_press function
 
 def abrir_ventana_productos(agregar_producto_a_venta, actualizar_total):
     def actualizar_tabla_productos():
@@ -612,6 +657,7 @@ def abrir_ventana_clientes():
     btn_eliminar.pack(side="left", padx=10)
 
 def abrir_ventana_empleados():
+    
     def actualizar_tabla_empleados():
         for item in tree.get_children():
             tree.delete(item)
@@ -817,6 +863,54 @@ def abrir_ventana_empleados():
     btn_eliminar.pack(side="left", padx=10)
 
     actualizar_tabla_empleados()
+
+import mysql.connector
+
+def abrir_ventana_tickets():
+    # Crear una nueva conexión y cursor dentro de la función
+    conexion = mysql.connector.connect(
+        host='localhost',
+        user='root',
+        password='',
+        database='bisuteria_db'
+    )
+    cursor = conexion.cursor()
+
+    ventana_tickets = tk.Toplevel()
+    ventana_tickets.title("Tickets")
+    ventana_tickets.geometry("600x400")
+    ventana_tickets.config(bg='lightgrey')
+
+    title_label = tk.Label(ventana_tickets, text="TICKETS", font=("Arial", 24, "bold"), bg='lightgrey')
+    title_label.pack(pady=10)
+
+    # Frame para la tabla
+    frame_table = tk.Frame(ventana_tickets)
+    frame_table.pack(fill="both", expand=True, padx=10, pady=10)
+
+    # Columnas para la tabla de tickets
+    columnas = ["Ticket ID", "Fecha", "Total"]
+
+    tree_tickets = ttk.Treeview(frame_table, columns=columnas, show="headings")
+    
+    for col in columnas:
+        tree_tickets.heading(col, text=col, anchor='center')
+        tree_tickets.column(col, anchor='center')
+    
+    tree_tickets.pack(fill="both", expand=True)
+
+    try:
+        cursor.execute("SELECT id_ticket, fecha, total FROM tickets")  # Ajusta según las columnas de tu tabla
+        datos_tickets = cursor.fetchall()
+
+        for ticket in datos_tickets:
+            tree_tickets.insert("", tk.END, values=(ticket[0], ticket[1], f"$ {ticket[2]:.2f}"))
+
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+
+
+    
 # Función para completar la venta
 def completar_venta():
     messagebox.showinfo("Venta completada!")

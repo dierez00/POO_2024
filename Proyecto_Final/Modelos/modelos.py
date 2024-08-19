@@ -350,15 +350,6 @@ class Venta:
         self.id = cursor.ejecutar(query, (self.fecha, self.total))
         for producto in self.productos:
             cursor.ejecutar("INSERT INTO venta_productos (venta_id, producto_id) VALUES (?, ?)", (self.id, producto.id))
-
-class Ticket:
-    def __init__(self, venta_id, fecha):
-        self.venta_id = venta_id
-        self.fecha = fecha
-
-    def guardar(self):
-        query = "INSERT INTO tickets (venta_id, fecha) VALUES (?, ?)"
-        cursor.ejecutar(query, (self.venta_id, self.fecha))
         
 class Pedido:
     def __init__(self, id_pedido=None, cliente_id=None, fecha=None, estado=None, total=None):
@@ -411,3 +402,87 @@ class Pedido:
                 print(f"ID: {pedido[0]}, Cliente ID: {pedido[1]}, Fecha: {pedido[2]}, Estado: {pedido[3]}")
         else:
             print("No hay pedidos registrados.")
+
+class Ticket:
+    def __init__(self, id_ticket=None, fecha=None, productos=None, total=0):
+        self.id_ticket = id_ticket
+        self.fecha = fecha
+        self.productos = productos if productos is not None else []  # Lista de tuplas (id_producto, nombre, cantidad, precio_unitario, total)
+        self.total = total
+
+    def agregar_producto(self, id_producto, nombre, cantidad, precio_unitario):
+        total_producto = cantidad * precio_unitario
+        self.productos.append((id_producto, nombre, cantidad, precio_unitario, total_producto))
+        self.total += total_producto
+
+    def eliminar_producto(self, id_producto):
+        for producto in self.productos:
+            if producto[0] == id_producto:
+                self.total -= producto[4]
+                self.productos.remove(producto)
+                break
+
+    def modificar_cantidad_producto(self, id_producto, nueva_cantidad):
+        for i, producto in enumerate(self.productos):
+            if producto[0] == id_producto:
+                nuevo_total = nueva_cantidad * producto[3]
+                self.total -= producto[4]
+                self.total += nuevo_total
+                self.productos[i] = (producto[0], producto[1], nueva_cantidad, producto[3], nuevo_total)
+                break
+
+    def generar_ticket(self):
+        ticket_str = f"Ticket ID: {self.id_ticket}\nFecha: {self.fecha}\n\n"
+        ticket_str += "Productos:\n"
+        for producto in self.productos:
+            ticket_str += f"{producto[1]} - Cantidad: {producto[2]}, Precio: {producto[3]}, Total: {producto[4]}\n"
+        ticket_str += f"\nTotal: $ {self.total:.2f}"
+        return ticket_str
+
+    @staticmethod
+    def registrar_ticket(fecha, productos, total, cursor, conexion):
+        cursor.execute('''
+            INSERT INTO tickets (fecha, total)
+            VALUES (%s, %s)
+        ''', (fecha, total))
+
+        id_ticket = cursor.lastrowid  # Obtener el ID del ticket recién creado
+
+        for producto in productos:
+            cursor.execute('''
+                INSERT INTO detalles_ticket (id_ticket, codigo_producto, cantidad, precio_unitario, total)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (id_ticket, producto[0], producto[2], producto[3], producto[4]))
+
+        conexion.commit()
+        print(f"Ticket registrado exitosamente con ID: {id_ticket}")
+        return id_ticket
+
+    @staticmethod
+    def listar_tickets(cursor):
+        cursor.execute("SELECT id_ticket, fecha, total FROM tickets")
+        return cursor.fetchall()
+
+    @staticmethod
+    def obtener_ticket(id_ticket, cursor):
+        cursor.execute("SELECT id_ticket, fecha, total FROM tickets WHERE id_ticket = %s", (id_ticket,))
+        ticket = cursor.fetchone()
+
+        if ticket:
+            cursor.execute('''
+                SELECT codigo_producto, cantidad, precio_unitario, total
+                FROM detalles_ticket
+                WHERE id_ticket = %s
+            ''', (id_ticket,))
+            productos = cursor.fetchall()
+            return ticket, productos
+        else:
+            print("Ticket no encontrado.")
+            return None, None
+
+    @staticmethod
+    def eliminar_ticket(id_ticket, cursor, conexion):
+        cursor.execute("DELETE FROM detalles_ticket WHERE id_ticket = %s", (id_ticket,))
+        cursor.execute("DELETE FROM tickets WHERE id_ticket = %s", (id_ticket,))
+        conexion.commit()
+        print("Ticket eliminado correctamente.")
